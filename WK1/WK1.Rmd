@@ -1,0 +1,59 @@
+---
+title: "WK1"
+output: html_document
+date: "2022-12-03"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Library
+```{r}
+library(tidyverse)
+library(sf)
+library(tmap)
+library(tmaptools)
+library(readr)
+library(RSQLite)
+
+tmap_mode('plot')
+```
+
+Lecture
+```{r}
+rawdata <- read.csv('D:/UCL_CODE/CASA0005/data/WK1/fly-tipping-borough.csv', header = TRUE, sep = ',')
+
+data <- select(rawdata,c(code, area, year, total_action_taken))
+
+fly_tipping <- data %>% spread(key = year, value = total_action_taken)
+
+london <- read_sf('D:/UCL_CODE/CASA0005/data/WK1/statistical-gis-boundaries-london/statistical-gis-boundaries-london/ESRI/London_Borough_Excluding_MHW.shp')
+
+london_fly_tipping <- merge(london, fly_tipping, by.x = 'GSS_CODE', by.y = 'code')
+
+qtm(london_fly_tipping, fill = '2011-12')+
+    tmap_options(max.categories = 4)
+
+st_write(london_fly_tipping,'D:/UCL_CODE/CASA0005/data/WK1/WK1L.gpkg',
+           "london_fly_tipping", delete_layer=TRUE)
+
+con <- dbConnect(RSQLite::SQLite(), dbname = 'D:/UCL_CODE/CASA0005/data/WK1/WK1L.gpkg')
+
+dbListTables(con)
+
+dbWriteTable(con, 'original_csv', fly_tipping, overwrite=TRUE)
+
+dbDisconnect(con)
+```
+
+Practice
+```{r}
+NZ <- read_sf('D:/UCL_CODE/CASA0005/data/WK1/statsnzterritorial-authority-2018-generalised-SHP/territorial-authority-2018-generalised.shp')
+
+paid_employee <- read.csv('D:/UCL_CODE/CASA0005/data/WK1/paid_employee.csv')
+
+NZ_paid_employee <- merge(NZ, paid_employee, by.x = 'TA2018_V1_', by.y = 'Area_Code')
+
+qtm(NZ_paid_employee, fill = 'Paid.employee')
+```

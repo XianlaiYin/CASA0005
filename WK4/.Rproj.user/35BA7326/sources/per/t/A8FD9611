@@ -1,0 +1,33 @@
+{
+    "id": "A8FD9611",
+    "path": "D:/UCL_CODE/CASA0005/work/WK4_Practice/WK4_Practice.Rmd",
+    "project_path": "WK4_Practice.Rmd",
+    "type": "r_markdown",
+    "hash": "1311169488",
+    "contents": "",
+    "dirty": false,
+    "created": 1667384539290.0,
+    "source_on_save": true,
+    "relative_order": 1,
+    "properties": {
+        "tempName": "Untitled1",
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "41,0",
+        "scrollLine": "34",
+        "last_setup_crc32": "",
+        "rmdVisualMode": "false",
+        "rmdVisualWrapConfigured": "true",
+        "docOutlineVisible": "1",
+        "rmdVisualModeLocation": "166:300",
+        "rmdVisualCollapsedChunks": ""
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1667390107,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1667390107495,
+    "read_only": false,
+    "read_only_alternatives": []
+}

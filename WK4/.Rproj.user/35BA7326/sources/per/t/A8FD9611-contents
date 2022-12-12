@@ -1,0 +1,53 @@
+---
+title: "WK4_Practice"
+output: html_document
+date: "2022-11-02"
+name: Xianlai Yin
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Library
+
+```{r message=FALSE, warning=FALSE}
+library(sf)
+library(tidyverse)
+library(countrycode)
+library(tmap)
+library(tmaptools)
+```
+
+### Read files
+
+```{r}
+allindex <- read_csv("D:/UCL_CODE/CASA0005/data/WK4P/HDR21-22_Composite_indices_complete_time_series.csv")
+worldmap <- st_read("D:/UCL_CODE/CASA0005/data/WK4P/World_Countries_(Generalized)/World_Countries__Generalized_.shp")
+```
+
+### Calculate and Join
+
+```{r}
+gii <- select(allindex, iso3, country, gii_2010, gii_2019)
+gii$difference <- gii$gii_2019-gii$gii_2010
+gii$iso2 <- countrycode(gii$iso3, origin = 'iso3c', destination = 'iso2c') 
+giimap <- merge(worldmap,
+                gii,
+                by.x="ISO", 
+                by.y="iso2")
+```
+
+### Plot
+
+```{r message=FALSE, warning=FALSE}
+tmap_mode("plot")
+finalmap <- tm_shape(giimap)+
+  tm_polygons("difference",
+              palett = "div",
+              title = "GII Changes",)+
+  tm_borders(lwd = 0.5)+
+  tm_layout(legend.position = c("left", "bottom"))
+tmap_save(finalmap, "giimap.jpg", dpi = 600)
+finalmap
+```
