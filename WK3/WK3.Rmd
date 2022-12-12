@@ -1,0 +1,381 @@
+---
+title: "WK3"
+output: html_document
+date: "2022-12-07"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(sf)
+library(tidyverse)
+library(colorspace)
+library(raster)
+library(sp)
+library(terra)
+library(fs)
+library(plotly)
+library(tmap)
+library(arcgisbinding)
+arc.check_product()
+```
+
+```{r}
+Ausoutline <- st_read("D:/UCL_CODE/CASA0005/data/WK3/gadm36_AUS_gpkg/gadm36_AUS.gpkg", 
+                      layer='gadm36_AUS_0')
+
+print(Ausoutline)
+st_crs(Ausoutline)$proj4string
+
+#转换空间参考系
+Ausoutline <- Ausoutline %>%
+  st_transform(.,4326)
+
+#From sf to sp
+AusoutlineSP <- Ausoutline %>%
+  as(., "Spatial")
+
+#From sp to sf
+AusoutlineSF <- AusoutlineSP %>%
+  st_as_sf()
+
+jan <- terra::rast("D:/UCL_CODE/CASA0005/data/WK3/wc2.1_5m_tavg/wc2.1_5m_tavg_01.tif")
+jan
+plot(jan)
+
+# set the proj 4 to a new object
+pr1 <- terra::project(jan, "+proj=moll +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs")
+
+#or....
+newproj<-"ESRI:54009"
+
+# get the jan raster and give it the new proj4
+pr1 <- jan %>%
+  terra::project(., newproj)
+plot(pr1)
+
+pr1 <- pr1 %>%
+  terra::project(., "EPSG:4326")
+plot(pr1)
+
+listfiles<-dir_info("D:/UCL_CODE/CASA0005/data/WK3/wc2.1_5m_tavg") %>%
+  filter(str_detect(path, ".tif")) %>%
+  dplyr::select(path)%>%
+  pull()
+
+#have a look at the file names 
+listfiles
+
+worldclimtemp <- listfiles %>%
+  terra::rast()
+
+#have a look at the raster stack
+worldclimtemp
+
+# access the january layer
+worldclimtemp[[1]]
+
+month <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+names(worldclimtemp) <- month
+
+worldclimtemp$Jan
+
+site <- c("Brisbane", "Melbourne", "Perth", "Sydney", "Broome", "Darwin", "Orange", 
+          "Bunbury", "Cairns", "Adelaide", "Gold Coast", "Canberra", "Newcastle", 
+          "Wollongong", "Logan City" )
+lon <- c(153.03, 144.96, 115.86, 151.21, 122.23, 130.84, 149.10, 115.64, 145.77, 
+         138.6, 153.43, 149.13, 151.78, 150.89, 153.12)
+lat <- c(-27.47, -37.91, -31.95, -33.87, 17.96, -12.46, -33.28, -33.33, -16.92, 
+         -34.93, -28, -35.28, -32.93, -34.42, -27.64)
+#Put all of this inforamtion into one list 
+samples <- data.frame(site, lon, lat, row.names="site")
+# Extract the data from the Rasterstack for all points 
+AUcitytemp<- terra::extract(worldclimtemp, samples)
+
+Aucitytemp2 <- AUcitytemp %>% 
+  as_tibble()%>% 
+  add_column(Site = site, .before = "Jan")
+
+Perthtemp <- Aucitytemp2 %>%
+  filter(site=="Perth")
+
+hist(as.numeric(Perthtemp))
+
+#define where you want the breaks in the historgram
+userbreak<-c(8,10,12,14,16,18,20,22,24,26)
+
+# remove the ID and site columns
+Perthtemp <- Aucitytemp2 %>%
+  filter(site=="Perth")
+
+t<-Perthtemp %>%
+  dplyr::select(Jan:Dec)
+
+hist((as.numeric(t)), 
+     breaks=userbreak, 
+     col="red", 
+     main="Histogram of Perth Temperature", 
+     xlab="Temperature", 
+     ylab="Frequency")
+
+histinfo <- as.numeric(t) %>%
+  as.numeric()%>%
+  hist(.)
+
+histinfo
+
+plot(Ausoutline$geom)
+
+#简化
+AusoutSIMPLE <- Ausoutline %>%
+  st_simplify(., dTolerance = 1000) %>%
+  st_geometry()%>%
+  plot()
+
+print(Ausoutline)
+
+crs(worldclimtemp)
+
+Austemp <- Ausoutline %>%
+  # now crop our temp data to the extent
+  terra::crop(worldclimtemp,.)
+
+# plot the output
+plot(Austemp)
+
+exactAus<-terra::mask(Austemp, Ausoutline)
+
+plot(exactAus)
+
+#subset using the known location of the raster
+hist(exactAus[[3]], col="red", main ="March temperature")
+
+exactAusdf <- exactAus %>%
+  as.data.frame()
+
+# set up the basic histogram
+gghist <- ggplot(exactAusdf, 
+                 aes(x=Mar)) + 
+  geom_histogram(color="black", 
+                 fill="white")+
+  labs(title="Ggplot2 histogram of Australian March temperatures", 
+       x="Temperature", 
+       y="Frequency")
+# add a vertical line to the hisogram showing mean tempearture
+gghist + geom_vline(aes(xintercept=mean(Mar, 
+                                        na.rm=TRUE)),
+                    color="blue", 
+                    linetype="dashed", 
+                    size=1)+
+  theme(plot.title = element_text(hjust = 0.5))
+
+squishdata<-exactAusdf%>%
+  pivot_longer(
+    cols = 1:12,
+    names_to = "Month",
+    values_to = "Temp"
+  )
+
+twomonths <- squishdata %>%
+  # | = OR
+  filter(., Month=="Jan" | Month=="Jun")
+
+meantwomonths <- twomonths %>%
+  group_by(Month) %>%
+  summarise(mean=mean(Temp, na.rm=TRUE))
+
+meantwomonths
+
+ggplot(twomonths, aes(x=Temp, color=Month, fill=Month)) +
+  geom_histogram(position="identity", alpha=0.5)+
+  geom_vline(data=meantwomonths, 
+             aes(xintercept=mean, 
+                 color=Month),
+             linetype="dashed")+
+  labs(title="Ggplot2 histogram of Australian Jan and Jun
+       temperatures",
+       x="Temperature",
+       y="Frequency")+
+  theme_classic()+
+  theme(plot.title = element_text(hjust = 0.5))
+
+data_complete_cases <- squishdata %>%
+  drop_na()%>% 
+  mutate(Month = factor(Month, levels = c("Jan","Feb","Mar",
+                                          "Apr","May","Jun",
+                                          "Jul","Aug","Sep",
+                                          "Oct","Nov","Dec")))
+
+# Plot faceted histogram
+ggplot(data_complete_cases, aes(x=Temp, na.rm=TRUE))+
+  geom_histogram(color="black", binwidth = 5)+
+  labs(title="Ggplot2 faceted histogram of Australian temperatures", 
+       x="Temperature",
+       y="Frequency")+
+  facet_grid(Month ~ .)+
+  theme(plot.title = element_text(hjust = 0.5))
+
+jan <- squishdata %>%
+  drop_na() %>%
+  filter(., Month=="Jan")
+
+jun <- squishdata %>%
+  drop_na() %>%
+  filter(., Month=="Jun")
+
+# give axis titles
+x <- list (title = "Temperature")
+y <- list (title = "Frequency")
+
+# set the bin width
+xbinsno<-list(start=0, end=40, size = 2.5)
+
+# plot the histogram calling all the variables we just set
+ihist<-plot_ly(alpha = 0.6) %>%
+  add_histogram(x = jan$Temp,
+                xbins=xbinsno, name="January") %>%
+  add_histogram(x = jun$Temp,
+                xbins=xbinsno, name="June") %>% 
+  layout(barmode = "overlay", xaxis=x, yaxis=y)
+
+ihist
+
+# mean per month
+meanofall <- squishdata %>%
+  group_by(Month) %>%
+  summarise(mean = mean(Temp, na.rm=TRUE))
+
+# print the top 1
+head(meanofall, n=1)
+
+# standard deviation per month
+sdofall <- squishdata %>%
+  group_by(Month) %>%
+  summarize(sd = sd(Temp, na.rm=TRUE))
+
+# maximum per month
+maxofall <- squishdata %>%
+  group_by(Month) %>%
+  summarize(max = max(Temp, na.rm=TRUE))
+
+# minimum per month
+minofall <- squishdata %>%
+  group_by(Month) %>%
+  summarize(min = min(Temp, na.rm=TRUE))
+
+# Interquartlie range per month
+IQRofall <- squishdata %>%
+  group_by(Month) %>%
+  summarize(IQR = IQR(Temp, na.rm=TRUE))
+
+# perhaps you want to store multiple outputs in one list..
+lotsofstats <- squishdata %>%
+  group_by(Month) %>%
+  summarize(IQR = IQR(Temp, na.rm=TRUE), 
+            max=max(Temp, na.rm=T))
+
+# or you want to know the mean (or some other stat) 
+#for the whole year as opposed to each month...
+
+meanwholeyear=squishdata %>%
+  summarize(meanyear = mean(Temp, na.rm=TRUE))
+```
+
+```{r}
+#The task is to manipulate some raster data and produce some descriptive statistics. Climatic models fed into the latest Intergovernmental Panel on Climate Change (IPCC), the models are divided into Shared Socioeconomic Pathways known as SSPs, ranging from SSP1 (lots of mitigation and adaption) to SSP5 (fossil fuel development). The Carbon Brief explainer has more information on the scenarios.
+#任务是操作一些栅格数据并生成一些描述性统计数据。气候模型被输入最新的政府间气候变化专门委员会（IPCC），这些模型分为称为SSPs的共同社会经济路径，范围从SSP1（大量缓解和适应）到SSP5（化石燃料开发）。碳简报解释器提供了有关情景的更多信息。
+
+#For any country in the World produce descriptive statistics that show the difference in maximum annual temperature for key cities between SSP1 and SSP5 for the years 2081-2100, using any model and resolution.
+#对于世界上任何国家，使用任何模型和分辨率生成描述性统计数据，显示 2081-2100 年间 SSP1 和 SSP5 之间主要城市的最高年温度差异。
+```
+
+```{r} 
+#Read Data
+SSP1 <- terra::rast("D:/UCL_CODE/CASA0005/data/WK3/wc2.1_2.5m_tmax_ACCESS-CM2_ssp126_2081-2100.tif")
+SSP5 <- terra::rast("D:/UCL_CODE/CASA0005/data/WK3/wc2.1_2.5m_tmax_ACCESS-CM2_ssp585_2081-2100.tif")
+
+st_layers("D:/UCL_CODE/CASA0005/data/WK3/gadm41_GBR.gpkg")
+UK <- st_read("D:/UCL_CODE/CASA0005/data/WK3/gadm41_GBR.gpkg", layer = "ADM_ADM_0")
+Cities <- st_read("D:/UCL_CODE/CASA0005/data/WK3/World_Cities.geojson")
+
+#Confirm Project
+SSP1
+SSP5
+
+#Extract
+SSP1_UK_mask <- terra::mask(SSP1, UK)
+SSP5_UK_mask <- terra::mask(SSP5, UK)
+Cities_UK <- Cities %>%
+  filter(FIPS_CNTRY == "UK")
+
+#Crop
+SSP1_UK <- UK %>%
+  terra::crop(SSP1_UK_mask,.)
+SSP5_UK <- UK %>%
+  terra::crop(SSP5_UK_mask,.)
+
+#Join SSP to Cities
+month <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+names(SSP1) <- month
+names(SSP5) <- month
+
+Cities_SSP1 <- terra::extract(SSP1, Cities_UK) %>% 
+  as_tibble() %>% 
+  add_column(City = Cities_UK$CITY_NAME, .before = "Jan")
+Cities_SSP5 <- terra::extract(SSP5, Cities_UK) %>% 
+  as_tibble() %>% 
+  add_column(City = Cities_UK$CITY_NAME, .before = "Jan")
+
+#Clean Data
+Cities_SSP1 <- select(Cities_SSP1,-ID)
+Cities_SSP1 <- data.frame(Cities_SSP1,row.names=1)
+Cities_SSP5 <- select(Cities_SSP5,-ID)
+Cities_SSP5 <- data.frame(Cities_SSP5,row.names=1)
+
+#Calculate Range
+i <- 1
+SSP1_range <- c()
+while (i <= 15) {
+  SSP1_range <- append(SSP1_range,max(Cities_SSP1[i,])-min(Cities_SSP1[i,]))
+  i <- i + 1
+}
+Cities_SSP1_range <- Cities_SSP1 %>% 
+  mutate(SSP1_range)
+
+i <- 1
+SSP5_range <- c()
+while (i <= 15) {
+  SSP5_range <- append(SSP5_range,max(Cities_SSP5[i,])-min(Cities_SSP5[i,]))
+  i <- i + 1
+}
+
+#Merge Data
+Cities_SSP5_range <- Cities_SSP5 %>% 
+  mutate(SSP5_range)
+
+change <- Cities_SSP5_range$SSP5_range-Cities_SSP1_range$SSP1_range %>%
+  as.numeric()
+
+Cities_compare <- data.frame(Cities_UK$CITY_NAME,Cities_SSP1_range$SSP1_range,Cities_SSP5_range$SSP5_range) %>%
+  mutate(change = format(change,digits = 4)) 
+Cities_UK <- Cities_UK %>%
+  merge(.,
+        Cities_compare,
+        by.x = "CITY_NAME",
+        by.y = "Cities_UK.CITY_NAME"
+        )
+
+
+#Plot
+tmap_mode("view")
+
+tm_shape(Cities_UK) + 
+  tm_symbols(col = "blue", scale = change) + 
+tm_shape(UK)+
+  tm_borders()
+```
+
